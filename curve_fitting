@@ -1,0 +1,398 @@
+import os
+import math
+import random
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy import optimize, signal,integrate
+from lmfit import models
+
+
+def gauss_crv(x, A, μ, σ):
+    return A / (σ * math.sqrt(2 * math.pi)) * np.exp(-(x-μ)**2 / (2*σ**2))
+
+
+def generate_model(spec):
+    composite_model = None
+    params = None
+    x = spec['x']
+    y = spec['y']
+    x_min = np.min(x)
+    x_max = np.max(x)
+    x_range = x_max - x_min
+    y_max = np.max(y)
+    for i, basis_func in enumerate(spec['model']):
+        prefix = f'm{i}_'
+        model = getattr(models, basis_func['type'])(prefix=prefix)
+        if basis_func['type'] in ['GaussianModel', 'LorentzianModel', 'VoigtModel']: # for now VoigtModel has gamma constrained to sigma
+            model.set_param_hint('sigma', min=1e-6, max=x_range)
+            model.set_param_hint('center', min=x_min, max=x_max)
+            model.set_param_hint('height', min=1e-6, max=1.1*y_max)
+            model.set_param_hint('amplitude', min=1e-6)
+            # default guess is horrible!! do not use guess()
+            default_params = {
+                prefix+'center': x_min + x_range * random.random(),
+                prefix+'height': y_max * random.random(),
+                prefix+'sigma': x_range * random.random()
+            }
+        else:
+            raise NotImplemented(f'model {basis_func["type"]} not implemented yet')
+        if 'help' in basis_func:  # allow override of settings in parameter
+            for param, options in basis_func['help'].items():
+                model.set_param_hint(param, **options)
+        model_params = model.make_params(**default_params, **basis_func.get('params', {}))
+        if params is None:
+            params = model_params
+        else:
+            params.update(model_params)
+        if composite_model is None:
+            composite_model = model
+        else:
+            composite_model = composite_model + model
+    return composite_model, params
+
+def update_spec_from_peaks(spec, model_indicies, peak_widths=(10, 25), **kwargs):
+    x = spec['x']
+    y = spec['y']
+    x_range = np.max(x) - np.min(x)
+    peak_indicies = signal.find_peaks_cwt(y, peak_widths)
+    np.random.shuffle(peak_indicies)
+    for peak_indicie, model_indicie in zip(peak_indicies.tolist(), model_indicies):
+        model = spec['model'][model_indicie]
+        if model['type'] in ['GaussianModel', 'LorentzianModel', 'VoigtModel']:
+            params = {
+                'height': y[peak_indicie],
+                'sigma': x_range / len(x) * np.min(peak_widths),
+                'center': x[peak_indicie]
+            }
+            if 'params' in model:
+                model.update(params)
+            else:
+                model['params'] = params
+        else:
+            raise NotImplemented(f'model {basis_func["type"]} not implemented yet')
+    return peak_indicies
+    
+def update_spec_from_peaks(spec, model_indicies, peak_widths=(10, 25), **kwargs):
+    x = spec['x']
+    y = spec['y']
+    x_range = np.max(x) - np.min(x)
+    peak_indicies = signal.find_peaks_cwt(y, peak_widths)
+    np.random.shuffle(peak_indicies)
+    for peak_indicie, model_indicie in zip(peak_indicies.tolist(), model_indicies):
+        model = spec['model'][model_indicie]
+        if model['type'] in ['GaussianModel', 'LorentzianModel', 'VoigtModel']:
+            params = {
+                'height': y[peak_indicie],
+                'sigma': x_range / len(x) * np.min(peak_widths),
+                'center': x[peak_indicie]
+            }
+            if 'params' in model:
+                model.update(params)
+            else:
+                model['params'] = params
+        else:
+            raise NotImplemented(f'model {basis_func["type"]} not implemented yet')
+    return peak_indicies
+def print_best_values(spec, output):
+    model_params = {
+        'GaussianModel':   ['amplitude', 'sigma'],
+        'LorentzianModel': ['amplitude', 'sigma'],
+        'VoigtModel':      ['amplitude', 'sigma', 'gamma']
+    }
+    best_values = output.best_values
+    print('center    model   amplitude     sigma      gamma')
+    for i, model in enumerate(spec['model']):
+        prefix = f'm{i}_'
+        values = ', '.join(f'{best_values[prefix+param]:8.3f}' for param in model_params[model["type"]])
+        print(f'[{best_values[prefix+"center"]:3.3f}] {model["type"]:16}: {values}')
+    print('RedChi = '+str(output.redchi))
+
+
+def spec_fitting(fileName,st_cm,ed_cm,init_center,lowBnd,upBnd): 
+    # return the fitting results including the center, amp, sigma, area for all the peaks and the redChi of fitting
+    mltK = 50 # repeat the fitting for mltK times
+    mulOutput = []
+    mulredChi = np.zeros(mltK)
+    prtRange = 40
+    for i in range(mltK):
+        raw_spec = np.loadtxt(fileName);
+        x = raw_spec[(raw_spec[:,0]>st_cm) & (raw_spec[:,0]<ed_cm), 0]
+        y = raw_spec[(raw_spec[:,0]>st_cm) & (raw_spec[:,0]<ed_cm), 1]
+        
+        # constructing the components
+        spec = {
+            'x': x,
+            'y': y,
+            'model': [
+                {
+                    'type': 'GaussianModel',
+                    'params': {'center': init_center[0]+(np.random.rand()-0.5)*prtRange},
+                    'help': {'center': {'min': lowBnd[0], 'max': upBnd[0]}}
+                },
+                {
+                    'type': 'GaussianModel',
+                    'params': {'center': init_center[1]+(np.random.rand()-0.5)*prtRange},
+                    'help': {'center': {'min': lowBnd[1], 'max': upBnd[1]}}
+                },
+                {
+                    'type': 'GaussianModel',
+                    'params': {'center': init_center[2]+(np.random.rand()-0.5)*prtRange},
+                    'help': {'center': {'min': lowBnd[2], 'max': upBnd[2]}}
+                }    
+            ]
+        }
+        # fitting for mltK times
+        model, params = generate_model(spec)
+        tmpoutput = model.fit(spec['y'], params, x=spec['x'])
+        mulOutput += [tmpoutput]
+        mulredChi[i] = tmpoutput.redchi;
+    # find the fitting with the smallest redChi
+    output = mulOutput[np.argmin(mulredChi)]
+    fitRe  = pd.DataFrame([output.best_values])
+    fitRe['redChi']   = output.redchi
+    
+    # calculate the area for each peak
+    alArea = 0
+    for i in range(len(init_center)):
+        prefix = 'm'+str(i)+'_'
+        Q_crv = lambda x:gauss_crv(x, output.best_values[prefix+'amplitude'], 
+                        output.best_values[prefix+'center'], output.best_values[prefix+'sigma'])
+        fitRe[prefix+'area'] = integrate.quad(Q_crv,st_cm,ed_cm)[0]
+        alArea += fitRe[prefix+'area']
+    
+    for i in range(len(init_center)):
+        prefix = 'm'+str(i)+'_'
+        fitRe[prefix+'area'] = fitRe[prefix+'area']/alArea;
+    fitRe = peak_sorting(fitRe,pkNum=3) # added on 2023-03 for sorting the peaks
+    return fitRe
+
+def nadir_src(spec,ini_point,src_range):
+    inteSpec = spec[(spec[:,0]>=ini_point-src_range) & (spec[:,0]<=ini_point+src_range), :]
+    nadir_ID = np.argmin(inteSpec[:,1]);
+    return inteSpec[nadir_ID,0]
+
+def positive_area_cal(spec,st_cm,ed_cm,src_range):
+    # find the nadir point within st_cn+/-src_range and ed_cm+/-src_range: denoted as st_cal, ed_cal
+    st_cal = nadir_src(spec,st_cm,src_range)
+    ed_cal = nadir_src(spec,ed_cm,src_range)
+
+
+    # using st_cal, ed_cal as the range of integration
+    inteSpec = spec[(spec[:,0]>st_cal) & (spec[:,0]<ed_cal), :]
+    m,n = np.shape(inteSpec)
+    area = 0;
+    for i in range(m-1):
+        tmp_cm, tmp_hgt = inteSpec[i,:];
+        if tmp_hgt >= 0:
+            area += (inteSpec[i+1,0] - inteSpec[i,0])*(inteSpec[i+1,1] + inteSpec[i,1])/2;
+        elif tmp_cm - st_cal < ed_cal - tmp_cm: # the negative point is closer to the start point st_cal
+            area = 0; # re-initiate the integration
+        else: 
+            break;  # stop the integration
+    return area;
+
+def peak_sorting(fitRe,pkNum):
+    centerClm = []
+    areaClm   = []
+    for i in range(pkNum):
+        prefix = 'm'+str(i)+'_';
+        centerClm += [prefix+'center'];
+        areaClm   += [prefix+'area'];
+    tmpCenter = fitRe[centerClm].values
+    tmpArea   = fitRe[areaClm].values
+    tmpInfor  = np.concatenate((tmpCenter,tmpArea));
+    tmpInfor  = tmpInfor[:, tmpInfor[0, :].argsort()] # sorting the peaks
+    tmpInfor[1,:] = tmpInfor[1,:]/np.sum(tmpInfor[1,:])
+    return tmpInfor;
+
+def Ip_cal(fileName,bnding_st,bnding_ed,strching_st,strching_ed,src_range):
+    raw_spec = np.loadtxt(fileName)
+    bnding_st = 250;
+    bnding_ed = 650;
+
+    strching_st = 820;
+    strching_ed = 1230;
+    src_range = 50;
+    raw_spec = np.loadtxt(filePath+tmpfile)
+    area_500 = positive_area_cal(raw_spec,bnding_st,bnding_ed,src_range)
+    area_1000 = positive_area_cal(raw_spec,strching_st,strching_ed,src_range)
+    
+    return area_500/area_1000
+
+# fitting a specific curve
+# filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/imiData-spec/txt/dianluyanghua/Sub300/' 
+# fileName = 'k1-1230_X0'
+# fileType = '.txt'
+
+# generate the full result csv [sampleID, content, tmperature, A1~A3, Ip]
+# load the composition and Ip value
+filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/data4ms/'
+cnt_Name = 'DL_YHCmp_0215-mole'
+filetype = '.csv'
+raw_cmp_Data = pd.read_csv(filePath+cnt_Name+filetype,header = 0)
+
+# 1) expande the dataframe
+cmp_Ip_Data = raw_cmp_Data.copy()
+pkNum = 3
+for i in range(pkNum):
+	prefix = str(i)
+	cmp_Ip_Data['A'+str(i)] = 0
+	cmp_Ip_Data['mu'+str(i)] = 0
+cmp_Ip_Data['mg_cnt'] = 0 # counting the number of merged results.
+cmp_Ip_Data['Ip_val'] = 0
+
+
+
+st_cm = 830
+ed_cm = 1250
+
+# 3 peaks
+init_center = [950,1050,1150]
+lowBnd = [st_cm,1000,1100]
+upBnd  = [1000,1100,ed_cm]
+
+# batch fitting the curves in a dir
+# filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/imiData-spec/txt/dianluhuanyuan/' 
+filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/imiData-spec/txt/dianluyanghua/sub200/' 
+# filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/imiData-spec/sub200_20230314/'
+filelist = os.listdir(filePath)
+
+# # ###### single run
+# tmpfile = filelist[0]
+# crvName = tmpfile.split('.')[0]
+# # peak fitting
+# resu = spec_fitting(filePath+tmpfile,st_cm,ed_cm,init_center,lowBnd,upBnd);
+# # calculating the Ip value
+# Ip_val = Ip_cal(filePath+tmpfile,bnding_st=250,bnding_ed=650,strching_st=820,strching_ed=1250,src_range=50)
+# # re-arrange the calculation result
+# # getting the sample and tmp
+# crvName = crvName.replace('-','_');
+# tmpID,tmpTmp = crvName.split('_')[0:2]; # get the curve ID and the temperature
+# tmpTmp       = int(tmpTmp); 
+
+# # find the matched row
+# idex = cmp_Ip_Data[((cmp_Ip_Data['ID']==tmpID.upper())|(cmp_Ip_Data['ID']==tmpID.lower())) 
+#                     & (abs(cmp_Ip_Data['tmp'] - tmpTmp)<1)].index
+# if len(idex) > 0: # find the target line
+#     tmpIdx = idex.values[0];    
+#     # placing the result into the cmp_Ip_Data table.
+#     for j in range(pkNum):
+#         cmp_Ip_Data.loc[tmpIdx,'A'+str(j)] += resu[1,j]
+#         cmp_Ip_Data.loc[tmpIdx,'mu'+str(j)] += resu[0,j]
+#     cmp_Ip_Data.loc[tmpIdx,'Ip_val']  += Ip_val
+#     cmp_Ip_Data.loc[tmpIdx,'mg_cnt']  += 1
+# else:    
+#     ID_index = cmp_Ip_Data[((cmp_Ip_Data['ID']==tmpID.upper())|(cmp_Ip_Data['ID']==tmpID.lower()))]
+#     if len(ID_index) > 0: # find the target sample
+#         tmp_row = ID_index.iloc[:1];
+#         tmp_row.loc[0,'tmp'] =  tmpTmp;
+#         for j in range(pkNum):
+#             tmp_row.loc[0,'A'+str(j)] = resu[1,j]
+#             tmp_row.loc[0,'mu'+str(j)] = resu[0,j]
+#         tmp_row.loc[0,'Ip_val']  = Ip_val
+#         tmp_row.loc[0,'mg_cnt']  = 1
+#         cmp_Ip_Data = pd.concat([cmp_Ip_Data,tmp_row])
+        
+    
+
+    
+########### multiple run
+cmp_Result = 0;
+for tmpfile in filelist:
+    if tmpfile.endswith(".txt"): # this file is a txt file 
+        # tmpfile = filelist[0]
+        crvName = tmpfile.split('.')[0]
+        # peak fitting
+        resu = spec_fitting(filePath+tmpfile,st_cm,ed_cm,init_center,lowBnd,upBnd);
+        # calculating the Ip value
+        Ip_val = Ip_cal(filePath+tmpfile,bnding_st=250,bnding_ed=650,strching_st=820,strching_ed=1250,src_range=50)
+        # re-arrange the calculation result
+        # getting the sample and tmp
+        crvName = crvName.replace('-','_');
+        tmpID,tmpTmp = crvName.split('_')[0:2]; # get the curve ID and the temperature
+        tmpTmp       = int(tmpTmp); 
+        if tmpID == "C12":
+            a = 0;
+        
+        
+        # find the matched row
+        idex = cmp_Ip_Data[((cmp_Ip_Data['ID']==tmpID.upper())|(cmp_Ip_Data['ID']==tmpID.lower())) 
+                            & (abs(cmp_Ip_Data['tmp'] - tmpTmp)<0.1)].index
+        if len(idex) > 0: # find the target line
+            tmpIdx = idex
+            # placing the result into the cmp_Ip_Data table.
+            for j in range(pkNum):
+                cmp_Ip_Data.loc[tmpIdx,['A'+str(j)]] += resu[1,j]
+                cmp_Ip_Data.loc[tmpIdx,['mu'+str(j)]] += resu[0,j]
+            cmp_Ip_Data.loc[tmpIdx,['Ip_val']]  += Ip_val
+            cmp_Ip_Data.loc[tmpIdx,['mg_cnt']]  += 1;
+        else:    # do not find the target line, creat a new line
+            ID_index = cmp_Ip_Data[((cmp_Ip_Data['ID']==tmpID.upper())|(cmp_Ip_Data['ID']==tmpID.lower()))]
+            if len(ID_index) > 0: # find the target sample
+                tmp_row = ID_index.iloc[:1];
+                tmp_idx = tmp_row.index
+                tmp_row.loc[tmp_idx,['tmp']] =  tmpTmp;
+                for j in range(pkNum):
+                    tmp_row.loc[tmp_idx,'A'+str(j)] = resu[1,j]
+                    tmp_row.loc[tmp_idx,'mu'+str(j)] = resu[0,j]
+                tmp_row.loc[tmp_idx,'Ip_val']  = Ip_val
+                tmp_row.loc[tmp_idx,'mg_cnt']  = 1
+                cmp_Ip_Data = pd.concat([cmp_Ip_Data,tmp_row],ignore_index=True)
+   
+###### 03-13 selection of samples            
+# slct_ID = ['C1','C2','C3','C4','C5','C6','C7','C8','C9','C10','K2','K3','K5','K7','K10']
+# cmp_Result = cmp_Ip_Data.loc[(cmp_Ip_Data['mg_cnt']>0)&(cmp_Ip_Data['ID'].isin(slct_ID))]
+
+# cmp_Result['cnt_cate'] = 0
+# HKHL_ID = ['K3','K10','C10'];           # cate = 4
+# HKLC_ID = ['K7','C4','C5','C6','C7'];   # cate = 3
+# LKHC_ID = ['K5','C8','C9'];             # cate = 2
+# LKLC_ID = ['K2','C1','C2','C3'];        # cate = 1
+
+# cmp_Result.loc[cmp_Result['ID'].isin(HKHL_ID),'cnt_cate'] = 4
+# cmp_Result.loc[cmp_Result['ID'].isin(HKLC_ID),'cnt_cate'] = 3
+# cmp_Result.loc[cmp_Result['ID'].isin(LKHC_ID),'cnt_cate'] = 2
+# cmp_Result.loc[cmp_Result['ID'].isin(LKLC_ID),'cnt_cate'] = 1
+
+
+# cmp_Result['Ip_val'] =  cmp_Result['Ip_val']/cmp_Result['mg_cnt'];
+# cmp_Result['A0'] =  cmp_Result['A0']/cmp_Result['mg_cnt'];
+# cmp_Result['A1'] =  cmp_Result['A1']/cmp_Result['mg_cnt'];
+# cmp_Result['A2'] =  cmp_Result['A2']/cmp_Result['mg_cnt'];
+# cmp_Result['mu0'] =  cmp_Result['mu0']/cmp_Result['mg_cnt'];
+# cmp_Result['mu1'] =  cmp_Result['mu1']/cmp_Result['mg_cnt'];
+# cmp_Result['mu2'] =  cmp_Result['mu2']/cmp_Result['mg_cnt'];
+
+###### 03-23 selection of samples            
+slct_ID = ['C1','C2','C3','C4','C5','C6','C7','C8','C9','C10','K2','K3','K5','K10','C11','K8']
+cmp_Result = cmp_Ip_Data.loc[(cmp_Ip_Data['mg_cnt']>0)&(cmp_Ip_Data['ID'].isin(slct_ID))]
+
+cmp_Result['cnt_cate'] = 0
+HKHL_ID = ['K3','K10','C10','C11'];           # cate = 4
+HKLC_ID = ['C4','C5','C6','C7'];   # cate = 3
+LKHC_ID = ['K5','C8','C9','K8'];             # cate = 2
+LKLC_ID = ['K2','C1','C2','C3'];        # cate = 1
+
+cmp_Result.loc[cmp_Result['ID'].isin(HKHL_ID),'cnt_cate'] = 4
+cmp_Result.loc[cmp_Result['ID'].isin(HKLC_ID),'cnt_cate'] = 3
+cmp_Result.loc[cmp_Result['ID'].isin(LKHC_ID),'cnt_cate'] = 2
+cmp_Result.loc[cmp_Result['ID'].isin(LKLC_ID),'cnt_cate'] = 1
+
+
+cmp_Result['Ip_val'] =  cmp_Result['Ip_val']/cmp_Result['mg_cnt'];
+cmp_Result['A0'] =  cmp_Result['A0']/cmp_Result['mg_cnt'];
+cmp_Result['A1'] =  cmp_Result['A1']/cmp_Result['mg_cnt'];
+cmp_Result['A2'] =  cmp_Result['A2']/cmp_Result['mg_cnt'];
+cmp_Result['mu0'] =  cmp_Result['mu0']/cmp_Result['mg_cnt'];
+cmp_Result['mu1'] =  cmp_Result['mu1']/cmp_Result['mg_cnt'];
+cmp_Result['mu2'] =  cmp_Result['mu2']/cmp_Result['mg_cnt'];
+
+# '''
+# outputing the results
+# '''
+outPath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/data4ms/'
+outName = cnt_Name+'_Ip_pkFit_0323'
+outType = '.csv'
+cmp_Result.to_csv(outPath+outName+outType,header=True)
