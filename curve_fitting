@@ -215,184 +215,28 @@ def Ip_cal(fileName,bnding_st,bnding_ed,strching_st,strching_ed,src_range):
     strching_st = 820;
     strching_ed = 1230;
     src_range = 50;
-    raw_spec = np.loadtxt(filePath+tmpfile)
     area_500 = positive_area_cal(raw_spec,bnding_st,bnding_ed,src_range)
     area_1000 = positive_area_cal(raw_spec,strching_st,strching_ed,src_range)
     
     return area_500/area_1000
 
-# fitting a specific curve
-# filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/imiData-spec/txt/dianluyanghua/Sub300/' 
-# fileName = 'k1-1230_X0'
-# fileType = '.txt'
-
-# generate the full result csv [sampleID, content, tmperature, A1~A3, Ip]
-# load the composition and Ip value
-filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/data4ms/'
-cnt_Name = 'DL_YHCmp_0215-mole'
-filetype = '.csv'
-raw_cmp_Data = pd.read_csv(filePath+cnt_Name+filetype,header = 0)
-
-# 1) expande the dataframe
-cmp_Ip_Data = raw_cmp_Data.copy()
-pkNum = 3
-for i in range(pkNum):
-	prefix = str(i)
-	cmp_Ip_Data['A'+str(i)] = 0
-	cmp_Ip_Data['mu'+str(i)] = 0
-cmp_Ip_Data['mg_cnt'] = 0 # counting the number of merged results.
-cmp_Ip_Data['Ip_val'] = 0
-
-
-
-st_cm = 830
-ed_cm = 1250
-
 # 3 peaks
-init_center = [950,1050,1150]
+st_cm = 830 
+ed_cm = 1250 # st_cm and ed_cm define the  range of peak fitting
+init_center = [950,1050,1150] # initial peaks
 lowBnd = [st_cm,1000,1100]
 upBnd  = [1000,1100,ed_cm]
 
-# batch fitting the curves in a dir
-# filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/imiData-spec/txt/dianluhuanyuan/' 
-filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/imiData-spec/txt/dianluyanghua/sub200/' 
-# filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/imiData-spec/sub200_20230314/'
-filelist = os.listdir(filePath)
+# file information
+# filePath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/imiData-spec/txt/dianluyanghua/Sub300/' 
+fileName = 'demo_curve'
+fileType = '.txt'
 
-# # ###### single run
-# tmpfile = filelist[0]
-# crvName = tmpfile.split('.')[0]
 # # peak fitting
-# resu = spec_fitting(filePath+tmpfile,st_cm,ed_cm,init_center,lowBnd,upBnd);
+resu = spec_fitting(filePath+fileName+fileType,st_cm,ed_cm,init_center,lowBnd,upBnd);
+# the output is the positions(vQi) of three spectral components and their corresponding area ratios (Ai), that is
+# [vQ1,vQ2,vQ34;
+#  A1, A2, A34]
+
 # # calculating the Ip value
-# Ip_val = Ip_cal(filePath+tmpfile,bnding_st=250,bnding_ed=650,strching_st=820,strching_ed=1250,src_range=50)
-# # re-arrange the calculation result
-# # getting the sample and tmp
-# crvName = crvName.replace('-','_');
-# tmpID,tmpTmp = crvName.split('_')[0:2]; # get the curve ID and the temperature
-# tmpTmp       = int(tmpTmp); 
-
-# # find the matched row
-# idex = cmp_Ip_Data[((cmp_Ip_Data['ID']==tmpID.upper())|(cmp_Ip_Data['ID']==tmpID.lower())) 
-#                     & (abs(cmp_Ip_Data['tmp'] - tmpTmp)<1)].index
-# if len(idex) > 0: # find the target line
-#     tmpIdx = idex.values[0];    
-#     # placing the result into the cmp_Ip_Data table.
-#     for j in range(pkNum):
-#         cmp_Ip_Data.loc[tmpIdx,'A'+str(j)] += resu[1,j]
-#         cmp_Ip_Data.loc[tmpIdx,'mu'+str(j)] += resu[0,j]
-#     cmp_Ip_Data.loc[tmpIdx,'Ip_val']  += Ip_val
-#     cmp_Ip_Data.loc[tmpIdx,'mg_cnt']  += 1
-# else:    
-#     ID_index = cmp_Ip_Data[((cmp_Ip_Data['ID']==tmpID.upper())|(cmp_Ip_Data['ID']==tmpID.lower()))]
-#     if len(ID_index) > 0: # find the target sample
-#         tmp_row = ID_index.iloc[:1];
-#         tmp_row.loc[0,'tmp'] =  tmpTmp;
-#         for j in range(pkNum):
-#             tmp_row.loc[0,'A'+str(j)] = resu[1,j]
-#             tmp_row.loc[0,'mu'+str(j)] = resu[0,j]
-#         tmp_row.loc[0,'Ip_val']  = Ip_val
-#         tmp_row.loc[0,'mg_cnt']  = 1
-#         cmp_Ip_Data = pd.concat([cmp_Ip_Data,tmp_row])
-        
-    
-
-    
-########### multiple run
-cmp_Result = 0;
-for tmpfile in filelist:
-    if tmpfile.endswith(".txt"): # this file is a txt file 
-        # tmpfile = filelist[0]
-        crvName = tmpfile.split('.')[0]
-        # peak fitting
-        resu = spec_fitting(filePath+tmpfile,st_cm,ed_cm,init_center,lowBnd,upBnd);
-        # calculating the Ip value
-        Ip_val = Ip_cal(filePath+tmpfile,bnding_st=250,bnding_ed=650,strching_st=820,strching_ed=1250,src_range=50)
-        # re-arrange the calculation result
-        # getting the sample and tmp
-        crvName = crvName.replace('-','_');
-        tmpID,tmpTmp = crvName.split('_')[0:2]; # get the curve ID and the temperature
-        tmpTmp       = int(tmpTmp); 
-        if tmpID == "C12":
-            a = 0;
-        
-        
-        # find the matched row
-        idex = cmp_Ip_Data[((cmp_Ip_Data['ID']==tmpID.upper())|(cmp_Ip_Data['ID']==tmpID.lower())) 
-                            & (abs(cmp_Ip_Data['tmp'] - tmpTmp)<0.1)].index
-        if len(idex) > 0: # find the target line
-            tmpIdx = idex
-            # placing the result into the cmp_Ip_Data table.
-            for j in range(pkNum):
-                cmp_Ip_Data.loc[tmpIdx,['A'+str(j)]] += resu[1,j]
-                cmp_Ip_Data.loc[tmpIdx,['mu'+str(j)]] += resu[0,j]
-            cmp_Ip_Data.loc[tmpIdx,['Ip_val']]  += Ip_val
-            cmp_Ip_Data.loc[tmpIdx,['mg_cnt']]  += 1;
-        else:    # do not find the target line, creat a new line
-            ID_index = cmp_Ip_Data[((cmp_Ip_Data['ID']==tmpID.upper())|(cmp_Ip_Data['ID']==tmpID.lower()))]
-            if len(ID_index) > 0: # find the target sample
-                tmp_row = ID_index.iloc[:1];
-                tmp_idx = tmp_row.index
-                tmp_row.loc[tmp_idx,['tmp']] =  tmpTmp;
-                for j in range(pkNum):
-                    tmp_row.loc[tmp_idx,'A'+str(j)] = resu[1,j]
-                    tmp_row.loc[tmp_idx,'mu'+str(j)] = resu[0,j]
-                tmp_row.loc[tmp_idx,'Ip_val']  = Ip_val
-                tmp_row.loc[tmp_idx,'mg_cnt']  = 1
-                cmp_Ip_Data = pd.concat([cmp_Ip_Data,tmp_row],ignore_index=True)
-   
-###### 03-13 selection of samples            
-# slct_ID = ['C1','C2','C3','C4','C5','C6','C7','C8','C9','C10','K2','K3','K5','K7','K10']
-# cmp_Result = cmp_Ip_Data.loc[(cmp_Ip_Data['mg_cnt']>0)&(cmp_Ip_Data['ID'].isin(slct_ID))]
-
-# cmp_Result['cnt_cate'] = 0
-# HKHL_ID = ['K3','K10','C10'];           # cate = 4
-# HKLC_ID = ['K7','C4','C5','C6','C7'];   # cate = 3
-# LKHC_ID = ['K5','C8','C9'];             # cate = 2
-# LKLC_ID = ['K2','C1','C2','C3'];        # cate = 1
-
-# cmp_Result.loc[cmp_Result['ID'].isin(HKHL_ID),'cnt_cate'] = 4
-# cmp_Result.loc[cmp_Result['ID'].isin(HKLC_ID),'cnt_cate'] = 3
-# cmp_Result.loc[cmp_Result['ID'].isin(LKHC_ID),'cnt_cate'] = 2
-# cmp_Result.loc[cmp_Result['ID'].isin(LKLC_ID),'cnt_cate'] = 1
-
-
-# cmp_Result['Ip_val'] =  cmp_Result['Ip_val']/cmp_Result['mg_cnt'];
-# cmp_Result['A0'] =  cmp_Result['A0']/cmp_Result['mg_cnt'];
-# cmp_Result['A1'] =  cmp_Result['A1']/cmp_Result['mg_cnt'];
-# cmp_Result['A2'] =  cmp_Result['A2']/cmp_Result['mg_cnt'];
-# cmp_Result['mu0'] =  cmp_Result['mu0']/cmp_Result['mg_cnt'];
-# cmp_Result['mu1'] =  cmp_Result['mu1']/cmp_Result['mg_cnt'];
-# cmp_Result['mu2'] =  cmp_Result['mu2']/cmp_Result['mg_cnt'];
-
-###### 03-23 selection of samples            
-slct_ID = ['C1','C2','C3','C4','C5','C6','C7','C8','C9','C10','K2','K3','K5','K10','C11','K8']
-cmp_Result = cmp_Ip_Data.loc[(cmp_Ip_Data['mg_cnt']>0)&(cmp_Ip_Data['ID'].isin(slct_ID))]
-
-cmp_Result['cnt_cate'] = 0
-HKHL_ID = ['K3','K10','C10','C11'];           # cate = 4
-HKLC_ID = ['C4','C5','C6','C7'];   # cate = 3
-LKHC_ID = ['K5','C8','C9','K8'];             # cate = 2
-LKLC_ID = ['K2','C1','C2','C3'];        # cate = 1
-
-cmp_Result.loc[cmp_Result['ID'].isin(HKHL_ID),'cnt_cate'] = 4
-cmp_Result.loc[cmp_Result['ID'].isin(HKLC_ID),'cnt_cate'] = 3
-cmp_Result.loc[cmp_Result['ID'].isin(LKHC_ID),'cnt_cate'] = 2
-cmp_Result.loc[cmp_Result['ID'].isin(LKLC_ID),'cnt_cate'] = 1
-
-
-cmp_Result['Ip_val'] =  cmp_Result['Ip_val']/cmp_Result['mg_cnt'];
-cmp_Result['A0'] =  cmp_Result['A0']/cmp_Result['mg_cnt'];
-cmp_Result['A1'] =  cmp_Result['A1']/cmp_Result['mg_cnt'];
-cmp_Result['A2'] =  cmp_Result['A2']/cmp_Result['mg_cnt'];
-cmp_Result['mu0'] =  cmp_Result['mu0']/cmp_Result['mg_cnt'];
-cmp_Result['mu1'] =  cmp_Result['mu1']/cmp_Result['mg_cnt'];
-cmp_Result['mu2'] =  cmp_Result['mu2']/cmp_Result['mg_cnt'];
-
-# '''
-# outputing the results
-# '''
-outPath = '/Users/macbjmu/Documents/research/lan_file/2021-07/2022-03-paper/imitationStudy/data4ms/'
-outName = cnt_Name+'_Ip_pkFit_0323'
-outType = '.csv'
-cmp_Result.to_csv(outPath+outName+outType,header=True)
+Ip_val = Ip_cal(filePath+fileName+fileType,bnding_st=250,bnding_ed=650,strching_st=820,strching_ed=1250,src_range=50)
